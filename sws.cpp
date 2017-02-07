@@ -1,5 +1,9 @@
+// Callum Colvine
+// V00789488
+// Code for ports is from the lab slides
+
 extern "C" {
-    #include <stdio.h>
+    // #include <stdio.h>
     #include <errno.h>
     #include <string.h>
     #include <sys/socket.h>
@@ -10,13 +14,14 @@ extern "C" {
     // #include <stdlib.h>
     #include <pthread.h>
 }
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
 #include <locale> 
-
+#include <iomanip>
 
 bool numOnly(const char *s)
 {
@@ -137,15 +142,22 @@ void portStuff(){
         close(sock);
         exit(EXIT_FAILURE);
     }
-
+    // Unspecified GET looks in the running directory for index.html
+    // GET / HTTP/1.0
+    // Specified GET looks in the folder for the specified file
+    // GET /icons/new.gif
     for (;;) {
-
         recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
+        // lock thread
+        // pass in ref to thread of socket to release?
         if (recsize < 0) {
             fprintf(stderr, "%s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
-        printf("datagram: %.*s\n", (int)recsize, buffer);
+        std::cout << "recsize is " << recsize << std::endl;
+        std::cout << "buffer is: " << std::setw(recsize) << buffer << std::endl;
+        // printf("datagram: %.*s\n", (int)recsize, buffer);
+        // unlock thread
     }
 }
 
