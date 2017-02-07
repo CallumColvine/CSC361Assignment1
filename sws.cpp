@@ -14,6 +14,10 @@ extern "C" {
     // #include <stdlib.h>
     #include <pthread.h>
 }
+
+// #include <ctime>
+#include <sstream>
+#include <string>
 #include <cstdio>
 #include <iostream>
 #include <string>
@@ -111,6 +115,35 @@ void* monitorInput(void *threadid){
     pthread_exit(NULL);
 }
 
+std::vector<std::string> splitString(std::string input)
+{
+    std::istringstream iss(input);
+    std::vector<std::string> dateVector;
+    do
+    {
+        std::string sub;
+        iss >> sub;
+        dateVector.push_back(sub);
+
+    } while (iss);
+    return dateVector;
+}
+
+std::string getTime(){
+    time_t tobj;
+    time(&tobj);
+    // struct tm * now = localtime(&tobj);
+    // ctime (&rawtime)
+    std::string now = ctime(&tobj);
+    // std::cout << now << std::endl;
+    std::stringstream returnTimeS;
+    std::vector<std::string> splitTime = splitString(now);
+    returnTimeS << splitTime[1] << " " << splitTime[2] << " " <<
+        splitTime[3];
+    std::string returnTime = returnTimeS.str();
+    return returnTime;
+}
+
 void portStuff(){
     // Thread stuff
     pthread_t threads[1];
@@ -148,19 +181,31 @@ void portStuff(){
     // Specified GET looks in the folder for the specified file
     // GET /icons/new.gif
     for (;;) {
-        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, (struct sockaddr*)&sa, &fromlen);
+        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, 
+                (struct sockaddr*)&sa, &fromlen);
         // lock thread
         // pass in ref to thread of socket to release?
         if (recsize < 0) {
             fprintf(stderr, "%s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
-        std::cout << "recsize is " << recsize << std::endl;
-        std::cout << "buffer is: " << std::setw(recsize) << buffer << std::endl;
+
+        std::string timePart = getTime();
+        std::cout << timePart << std::setw(recsize) << " " << buffer 
+                << std::endl;
+        // std::cout << "recsize is " << recsize << std::endl;
+        // std::cout << "buffer is: " << std::setw(recsize) << buffer << std::endl;
         // printf("datagram: %.*s\n", (int)recsize, buffer);
         // unlock thread
     }
 }
+
+
+    // time_t t = time(0);   // get time now
+    // cout << (now->tm_year + 1900) << '-' 
+    //      << (now->tm_mon + 1) << '-'
+    //      <<  now->tm_mday
+    //      << endl;
 
 // UDP Server
 int main(int argc, char *argv[])
