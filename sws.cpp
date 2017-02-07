@@ -8,14 +8,17 @@ extern "C" {
     #include <string.h>
     #include <sys/socket.h>
     #include <sys/types.h>
+    #include <sys/select.h>
     #include <netinet/in.h>
     #include <unistd.h> /* for close() for socket */
     #include <dirent.h>
     // #include <stdlib.h>
     #include <pthread.h>
+    #include <arpa/inet.h>
 }
 
 // #include <ctime>
+#include <typeinfo>
 #include <sstream>
 #include <string>
 #include <cstdio>
@@ -26,6 +29,8 @@ extern "C" {
 #include <algorithm>
 #include <locale>
 #include <iomanip>
+#include <fstream>
+
 
 bool numOnly(const char *s)
 {
@@ -38,7 +43,19 @@ bool numOnly(const char *s)
     return true;
 }
 
-bool notValidPath(const char *s){
+bool validPathString(std::string s){
+    std::ifstream inFile(s);
+    if (inFile.good())
+    {
+        inFile.close();
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool validPath(const char *s){
+    std::cout << "checking if " << s << " is valid " << std::endl;
     DIR* attemptDir = opendir(s);
     if (attemptDir)
     {
@@ -68,7 +85,7 @@ bool checkArguments(int argc, char* argv[]){
         return false;
     }
     // Case where the path is not valid
-    if (notValidPath(argv[2]) == false)
+    if (validPath(argv[2]) == false)
     {
         std::cout << "The path is not valid" << std::endl;
         return false;
@@ -84,36 +101,37 @@ void exitProgramGracefully(){
     exit (EXIT_FAILURE);
 }
 
-bool checkInput(){
-    char input = 'x';
-    std::cin >> input;
-    if (input == 'q')
-    {
-        // std::cout << "input is bad" << std::endl;
-        return false;
-    }
-    // std::cout << "input okay" << std::endl;
-    return true;
-}
+// bool checkInput(){
+//     char input = 'x';
+//     std::cin >> input;
+//     if (input == 'q')
+//     {
+//         // std::cout << "input is bad" << std::endl;
+//         return false;
+//     }
+//     // std::cout << "input okay" << std::endl;
+//     return true;
+// }
 
-void* monitorInput(void *threadid){
-    bool exitAndRelese = false;
-    for(;;){
-        char input = 'x';
-        std::cin >> input;
-        if (input == 'q')
-        {
-            // std::cout << "input is bad" << std::endl;
-            exitAndRelese = true;
-        }
-        // std::cout << "input okay" << std::endl;
-        if (exitAndRelese == true){
-            std::cout << "Exit program" << std::endl;
-            exit (EXIT_FAILURE);
-        }
-    }
-    pthread_exit(NULL);
-}
+// Used as thread method
+// void* monitorInput(void *threadid){
+//     bool exitAndRelese = false;
+//     for(;;){
+//         char input = 'x';
+//         std::cin >> input;
+//         if (input == 'q')
+//         {
+//             // std::cout << "input is bad" << std::endl;
+//             exitAndRelese = true;
+//         }
+//         // std::cout << "input okay" << std::endl;
+//         if (exitAndRelese == true){
+//             std::cout << "Exit program" << std::endl;
+//             exit (EXIT_FAILURE);
+//         }
+//     }
+//     pthread_exit(NULL);
+// }
 
 std::vector<std::string> splitString(std::string input)
 {
@@ -144,21 +162,147 @@ std::string getTime(){
     return returnTime;
 }
 
-void portStuff(){
-    // Thread stuff
-    pthread_t threads[1];
-    int rc;
-    rc = pthread_create(&threads[0], NULL, monitorInput, nullptr);
-    if (rc){
-        std::cout << "Error:unable to create thread," << rc << std::endl;
-        exit(-1);
+// Multithreading instead of select() for input filtering
+void useThreads(){
+    // pthread_t threads[1];
+    // int rc;
+    // rc = pthread_create(&threads[0], NULL, monitorInput, nullptr);
+    // if (rc){
+    //     std::cout << "Error:unable to create thread," << rc << std::endl;
+    //     exit(-1);
+    // }
+}
+
+// May need socket passed in
+void gracefulShutdown(){
+    // Releases socket
+    std::cout << "Exit program through graceful shutdown" << std::endl;
+    exit (EXIT_FAILURE);
+}
+
+// Make this return a bool so I can cleanup before calling gracefulShutdown()
+void checkInput(){
+    char input;
+    std::cin >> input;
+    if (input == 'q')
+    {
+        gracefulShutdown();
+    } else {    
+        std::cout << "Invalid input" << std::endl;
+    }
+}
+
+std::string return400(){
+    return "HTTP/1.0 400 Bad Request\n";
+}
+
+std::string return404(){
+    return "HTTP/1.0 404 Not Found\n";
+}
+
+std::string return200(){
+    return "HTTP/1.0 200 OK\n";
+}
+
+// Adding 'index.html' to filename
+std::string formatFilename(std::string inName, std::string curPath){
+    std::string readFileName = inName;
+    if (inName.back() == '/')
+    {
+        readFileName.append("index.html");
+    }
+    curPath.pop_back();
+    readFileName = curPath + readFileName; 
+    return readFileName;
+}
+
+// ToDo: test if I can open a file I don't have permissions for
+// Don't think I can though
+int analyzeRequest(char* buffer, std::string curPath){
+    std::vector<std::string> splitReq = splitString(buffer);
+    if (splitReq[0] != "GET")
+    {
+        return 400;
+    } else if (splitReq[2] != "HTTP/1.0"){
+        return 400;
+    }
+    std::string readFileName = formatFilename(splitReq[1], curPath);
+    // std::cout << "readFileName is " << readFileName << std::endl;
+    if (!validPathString(readFileName)){
+        std::cout << "File is not valid! " << std::endl;
+        return 404;
+    } else { 
+        return 200;
     }
 
+}
+
+void generateResponse(int code, int port, std::string senderIP){
+    int senderSock;
+    struct sockaddr_in sa;
+    int bytes_sent;
+    char buffer[200];
+    senderSock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (-1 == senderSock) {
+        /* if socket failed to initialize, exit */
+        printf("Error creating socket for response");
+        exit(EXIT_FAILURE);
+    }
+    /* Zero out socket address */
+    memset(&sa, 0, sizeof sa);
+      
+    /* The address is IPv4 */
+    sa.sin_family = AF_INET;
+     
+    /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate value */
+    // sa.sin_addr.s_addr = inet_addr("10.10.1.100");
+    sa.sin_addr.s_addr = inet_addr(senderIP.c_str());
+      
+    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
+    sa.sin_port = htons(port);
+    if (code == 404){
+        strcpy(buffer, "ERROR 404");
+        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+                (struct sockaddr*)&sa, sizeof sa);
+        if (bytes_sent < 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    } else if (code == 400){
+        strcpy(buffer, "ERROR 400");
+        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+                (struct sockaddr*)&sa, sizeof sa);
+        if (bytes_sent < 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);        
+        }
+    } else {
+        strcpy(buffer, "200 OK");
+        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+                (struct sockaddr*)&sa, sizeof sa);
+        if (bytes_sent < 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);        
+        }        
+    }
+
+    close(senderSock);
+}
+
+// Method for trimming the last element of a string from 
+// http://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
+static inline std::string &rtrim(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+            std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+    return s;
+}
+
+void portStuff(char* curPath, int port){
     // ToDo: Check return values for all socket related functions
-    int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    int servSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     // int enable = 1;
     int optval = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    setsockopt(servSocket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 // error("setsockopt(SO_REUSEADDR) failed"));
     struct sockaddr_in sa;
     char buffer[1024];
@@ -171,11 +315,13 @@ void portStuff(){
     sa.sin_port = htons(8080);
     fromlen = sizeof(sa);
 
-    if (-1 == bind(sock, (struct sockaddr *)&sa, sizeof sa)) {
+    if (-1 == bind(servSocket, (struct sockaddr *)&sa, sizeof sa)) {
         perror("error bind failed");
-        close(sock);
+        close(servSocket);
         exit(EXIT_FAILURE);
     }
+    // For select()
+    fd_set read_fds;
     // Unspecified GET looks in the running directory for index.html
     // GET / HTTP/1.0
     // Specified GET looks in the folder for the specified file
@@ -183,25 +329,55 @@ void portStuff(){
     for (;;) {
         // use select() for this part to look at both inputs
             // stdin keyboard and recvfrom buffer
-        // ToDo: get port # form recvfrom (2nd last element)
-        // sendto with C++ strings
-        // http://stackoverflow.com/questions/19535978/c-using-sendto-with-a-basic-string
-        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0,
-                (struct sockaddr*)&sa, &fromlen);
-        // lock thread
-        // pass in ref to thread of socket to release?
-        if (recsize < 0) {
-            fprintf(stderr, "%s\n", strerror(errno));
-            exit(EXIT_FAILURE);
+        FD_ZERO(&read_fds);
+        FD_SET(0, &read_fds);
+        FD_SET(servSocket, &read_fds);
+        if (select(servSocket + 1, &read_fds, 0, 0, 0) == -1)
+        {
+            perror("Failed to select an input");
+            gracefulShutdown();
+        } if (FD_ISSET(0, &read_fds)){
+            checkInput();
+        } if (FD_ISSET(servSocket, &read_fds)){
+            // ToDo: get port # form recvfrom (2nd last element)
+            // sendto with C++ strings
+            // http://stackoverflow.com/questions/19535978/c-using-sendto-with-a-basic-string
+            recsize = recvfrom(servSocket, (void*)buffer, sizeof buffer, 0,
+                    (struct sockaddr*)&sa, &fromlen);
+            if (recsize < 0) {
+                fprintf(stderr, "%s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            std::string cstrBuffer = std::string(buffer);
+            cstrBuffer.resize(recsize);
+            cstrBuffer = rtrim(cstrBuffer);
+            // std::stringstream inputRequestS = std::setw(recsize) << buffer;
+            // std::cout << "Full input request is " << inputRequestS.str() << std::endl;
+            // Getting time of message arrival
+            std::string timePart = getTime();
+            // Getting address and port of message sender
+            char senderIP[INET_ADDRSTRLEN]; 
+            inet_ntop(AF_INET, &(sa.sin_addr), senderIP, INET_ADDRSTRLEN);
+            // Analyze input
+            int response = analyzeRequest(buffer, std::string(curPath));
+            std::string responseCode;
+            if (response == 400)
+                responseCode = return400();
+            else if (response == 404)
+                responseCode = return404();
+            else {
+                std::vector<std::string> splitReq = splitString(buffer);
+                std::string readFileName = formatFilename(splitReq[1], curPath);
+                responseCode = return200() + readFileName;
+            }
+            // Log Message
+            std::cout << timePart << ' ' << senderIP << ':' << 
+                    htons(sa.sin_port) << "; " << cstrBuffer << "; " << 
+                    responseCode << ";" << std::endl;
+            // generateResponse(response, port, senderIP);
+            // getAddrAndPort()
+            // std::cout << str << std::endl;
         }
-
-        std::string timePart = getTime();
-        std::cout << timePart << std::setw(recsize) << ' ' << buffer
-                << std::endl;
-        // std::cout << "recsize is " << recsize << std::endl;
-        // std::cout << "buffer is: " << std::setw(recsize) << buffer << std::endl;
-        // printf("datagram: %.*s\n", (int)recsize, buffer);
-        // unlock thread
     }
 }
 
@@ -230,6 +406,6 @@ int main(int argc, char *argv[])
     std::cout << "\nsws is running on UDP port " << portNum <<
         " and serving " << inPath << "\npress ‘q’ to quit ..." << std::endl;
 
-    portStuff();
+    portStuff(inPath, portNum);
 
 }
