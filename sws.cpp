@@ -154,7 +154,7 @@ void portStuff(){
         exit(-1);
     }
 
-
+    // ToDo: Check return values for all socket related functions
     int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     // int enable = 1;
     int optval = 1;
@@ -181,7 +181,12 @@ void portStuff(){
     // Specified GET looks in the folder for the specified file
     // GET /icons/new.gif
     for (;;) {
-        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0, 
+        // use select() for this part to look at both inputs
+            // stdin keyboard and recvfrom buffer
+        // ToDo: get port # form recvfrom (2nd last element)
+        // sendto with C++ strings
+        // http://stackoverflow.com/questions/19535978/c-using-sendto-with-a-basic-string
+        recsize = recvfrom(sock, (void*)buffer, sizeof buffer, 0,
                 (struct sockaddr*)&sa, &fromlen);
         // lock thread
         // pass in ref to thread of socket to release?
@@ -191,7 +196,7 @@ void portStuff(){
         }
 
         std::string timePart = getTime();
-        std::cout << timePart << std::setw(recsize) << " " << buffer 
+        std::cout << timePart << std::setw(recsize) << ' ' << buffer
                 << std::endl;
         // std::cout << "recsize is " << recsize << std::endl;
         // std::cout << "buffer is: " << std::setw(recsize) << buffer << std::endl;
@@ -202,7 +207,7 @@ void portStuff(){
 
 
     // time_t t = time(0);   // get time now
-    // cout << (now->tm_year + 1900) << '-' 
+    // cout << (now->tm_year + 1900) << '-'
     //      << (now->tm_mon + 1) << '-'
     //      <<  now->tm_mday
     //      << endl;
