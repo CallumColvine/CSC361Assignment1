@@ -9,7 +9,7 @@ extern "C" {
     #include <sys/socket.h>
     #include <sys/types.h>
     #include <netinet/in.h>
-    #include <unistd.h> /* for close() for socket */ 
+    #include <unistd.h> /* for close() for socket */
     #include <dirent.h>
     // #include <stdlib.h>
     #include <pthread.h>
@@ -20,7 +20,7 @@ extern "C" {
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
-#include <locale> 
+#include <locale>
 #include <iomanip>
 
 bool numOnly(const char *s)
@@ -29,7 +29,7 @@ bool numOnly(const char *s)
         if (isdigit(*s++) == 0){
             std::cout << "Is not digits" << std::endl;
             return false;
-        } 
+        }
     }
     return true;
 }
@@ -45,7 +45,7 @@ bool notValidPath(const char *s){
     {
         return false;
     }
-    else {       
+    else {
         return false;
     }
 }
@@ -57,16 +57,16 @@ bool checkArguments(int argc, char* argv[]){
         std::cout << "Wrong number of input arguments" << std::endl;
         return false;
     }
-    // Case where the port # is not a numebr 
+    // Case where the port # is not a numebr
     if (numOnly(argv[1]) == false)
     {
         std::cout << "The string is not made of numbers" << std::endl;
         return false;
     }
-    // Case where the path is not valid 
+    // Case where the path is not valid
     if (notValidPath(argv[2]) == false)
     {
-        std::cout << "The path is not valid" << std::endl;        
+        std::cout << "The path is not valid" << std::endl;
         return false;
     }
 
@@ -74,9 +74,10 @@ bool checkArguments(int argc, char* argv[]){
 }
 
 void exitProgramGracefully(){
-    std::cout << 
-        "Invalid input \nPlease use input in the form: ./sws 8080 testdir/ " 
+    std::cout <<
+        "Invalid input \nPlease use input in the form: ./sws 8080 testdir/ "
         << std::endl;
+    exit (EXIT_FAILURE);
 }
 
 bool checkInput(){
@@ -124,9 +125,9 @@ void portStuff(){
     int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     // int enable = 1;
     int optval = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval); 
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 // error("setsockopt(SO_REUSEADDR) failed"));
-    struct sockaddr_in sa; 
+    struct sockaddr_in sa;
     char buffer[1024];
     ssize_t recsize;
     socklen_t fromlen;
@@ -167,7 +168,7 @@ int main(int argc, char *argv[])
     // std::cout << "array size total is " << sizeof(argv) << std::endl;
     // std::cout << "element size is " << sizeof(argv[0]) << std::endl;
     // std::cout << "division is " << (sizeof(argv)/sizeof(argv[0])) << std::endl;
-    // int argvLen = (sizeof(argv)/sizeof(argv[0])); 
+    // int argvLen = (sizeof(argv)/sizeof(argv[0]));
 
 
     bool argsGood = checkArguments(argc, argv);
@@ -176,10 +177,9 @@ int main(int argc, char *argv[])
     }
     int portNum = atoi(argv[1]);
     char* inPath = argv[2];
-    std::cout << "\nsws is running on UDP port " << portNum << 
+    std::cout << "\nsws is running on UDP port " << portNum <<
         " and serving " << inPath << "\npress ‘q’ to quit ..." << std::endl;
 
     portStuff();
 
 }
-
