@@ -238,10 +238,12 @@ int analyzeRequest(char* buffer, std::string curPath){
 
 }
 
-void sendFileContents(int senderSock, struct sockaddr_in sa, 
+void sendFileContents(int senderSock, struct sockaddr_in sa,
                       std::string readFileName){
     int bytes_sent;
+    int bytes_read;
     char buffer[200];
+    char *fileContents = new char [200];
     // Sending the first message
     std::string firstPart = "HTTP/1.0 200 OK\n";
     strcpy(buffer, firstPart.c_str());
@@ -254,18 +256,27 @@ void sendFileContents(int senderSock, struct sockaddr_in sa,
     // Sending file contents
     std::ifstream inFile(readFileName, std::ios::binary | std::ios::ate);
     int fileLen = inFile.tellg();
-    if (fileLen < 200){
-        inFile.read(buffer, fileLen);
-        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+    inFile.close();
+    FILE * inFileC = fopen(readFileName.c_str(), "r");
+    if (fileLen <= 200){
+        std::cout << "Sending message of len < 200" << std::endl;
+        // inFile.read(fileContents, fileLen);
+        bytes_read = fread(fileContents, sizeof(char), fileLen, inFileC);
+
+        std::cout << "Buffer is " << fileContents <<
+                     "fileLen is " << fileLen << std::endl;
+        bytes_sent = sendto(senderSock, fileContents, strlen(fileContents), 0,
                 (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
             printf("Error sending packet: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     } else {
+        std::cout << "Sending message of len > 200" << std::endl;
         for (int i = 0; i < fileLen; i += 200)
         {
-            inFile.read(buffer, fileLen);
+
+            inFile.read(buffer, 200);
             bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                     (struct sockaddr*)&sa, sizeof sa);
             if (bytes_sent < 0) {
@@ -274,6 +285,8 @@ void sendFileContents(int senderSock, struct sockaddr_in sa,
             }
         }
     }
+    // fclose(inFile);
+
 }
 
 void generateResponse(int code, int port, std::string senderIP, int senderSock,
@@ -302,7 +315,7 @@ void generateResponse(int code, int port, std::string senderIP, int senderSock,
         }
     } else {
         std::cout << "Sending 200 OK to sender" << std::endl;
-        sendFileContents(senderSock, sa, readFileName);  
+        sendFileContents(senderSock, sa, readFileName);
     }
 }
 
@@ -408,7 +421,7 @@ void portStuff(char* curPath, int port){
             std::cout << timePart << ' ' << senderIP << ':' <<
                     htons(sa.sin_port) << "; " << cstrBuffer << "; " <<
                     responseCode << std::endl;
-            generateResponse(response, port, senderIP, servSocket, sa, 
+            generateResponse(response, port, senderIP, servSocket, sa,
                              readFileName);
             // i ++;
             // if (i == 20) break;
