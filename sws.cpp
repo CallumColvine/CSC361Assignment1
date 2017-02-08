@@ -181,13 +181,14 @@ void gracefulShutdown(){
 }
 
 // Make this return a bool so I can cleanup before calling gracefulShutdown()
-void checkInput(){
+void checkInput(int servSocket){
     char input;
     std::cin >> input;
     if (input == 'q')
     {
+        close(servSocket);
         gracefulShutdown();
-    } else {    
+    } else {
         std::cout << "Invalid input" << std::endl;
     }
 }
@@ -212,7 +213,7 @@ std::string formatFilename(std::string inName, std::string curPath){
         readFileName.append("index.html");
     }
     curPath.pop_back();
-    readFileName = curPath + readFileName; 
+    readFileName = curPath + readFileName;
     return readFileName;
 }
 
@@ -230,39 +231,43 @@ int analyzeRequest(char* buffer, std::string curPath){
     // std::cout << "readFileName is " << readFileName << std::endl;
     if (!validPathString(readFileName)){
         return 404;
-    } else { 
+    } else {
         return 200;
     }
 
 }
 
-void generateResponse(int code, int port, std::string senderIP){
-    int senderSock;
-    struct sockaddr_in sa;
+void generateResponse(int code, int port, std::string senderIP, int senderSock,
+                      struct sockaddr_in sa){
+    // int senderSock;
+    // struct sockaddr_in sa;
     int bytes_sent;
     char buffer[200];
-    senderSock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (-1 == senderSock) {
-        /* if socket failed to initialize, exit */
-        printf("Error creating socket for response");
-        exit(EXIT_FAILURE);
-    }
+    // senderSock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    // if (-1 == senderSock) {
+    //     /* if socket failed to initialize, exit */
+    //     printf("Error creating socket for response");
+    //     exit(EXIT_FAILURE);
+    // }
     /* Zero out socket address */
-    memset(&sa, 0, sizeof sa);
-      
+    // memset(&sa, 0, sizeof sa);
+
     /* The address is IPv4 */
-    sa.sin_family = AF_INET;
-     
-    /* IPv4 adresses is a uint32_t, convert a string representation of the 
+    // sa.sin_family = AF_INET;
+
+    /* IPv4 adresses is a uint32_t, convert a string representation of the
     octets to the appropriate value */
     // sa.sin_addr.s_addr = inet_addr("10.10.1.100");
-    std::cout << "Sending to " << "10.0.2.15" << std::endl;
+    // std::cout << "Sending to " << "10.0.2.15" << std::endl;
+    // senderIP = "10.10.1.1";
+    std::cout << "Sender IP is " << senderIP << std::endl;
     // sa.sin_addr.s_addr = inet_addr(senderIP.c_str());
-    sa.sin_addr.s_addr = inet_addr("10.0.2.15");
+    // sa.sin_addr.s_addr = inet_addr("10.0.1.100");
     /* sockets are unsigned shorts, htons(x) ensures x is in network byte order,
-     set the port to 7654 */
+    set the port to 7654 */
     // std::cout << "Code is " << code << std::endl;
-    sa.sin_port = htons(port);
+    std::cout << "Sender port is " << port << std::endl;
+    // sa.sin_port = htons(port);
     if (code == 404){
         std::cout << "Sending 404 Not Found to sender" << std::endl;
         strcpy(buffer, "ERROR 404");
@@ -279,23 +284,23 @@ void generateResponse(int code, int port, std::string senderIP){
                 (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
             printf("Error sending packet: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);        
+            exit(EXIT_FAILURE);
         }
     } else {
-        std::cout << "Sending 200 OK to sender" << std::endl;
+      std::cout << "Sending 200 OK to sender" << std::endl;
         strcpy(buffer, "200 OK");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
             printf("Error sending packet: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);        
-        }        
+            exit(EXIT_FAILURE);
+        }
     }
 
-    close(senderSock);
+    // close(senderSock);
 }
 
-// Method for trimming the last element of a string from 
+// Method for trimming the last element of a string from
 // http://stackoverflow.com/questions/216823/whats-the-best-way-to-trim-stdstring
 static inline std::string &rtrim(std::string &s) {
     s.erase(std::find_if(s.rbegin(), s.rend(),
@@ -337,19 +342,21 @@ void portStuff(char* curPath, int port){
     // GET / HTTP/1.0
     // Specified GET looks in the folder for the specified file
     // GET /icons/new.gif
-    int i = 0;
+    // int i = 0;
     for (;;) {
         // use select() for this part to look at both inputs
             // stdin keyboard and recvfrom buffer
         FD_ZERO(&read_fds);
         FD_SET(0, &read_fds);
         FD_SET(servSocket, &read_fds);
+
         if (select(servSocket + 1, &read_fds, 0, 0, 0) == -1)
         {
+            std::cout << "Select error" << std::endl;
             perror("Failed to select an input");
             gracefulShutdown();
         } if (FD_ISSET(0, &read_fds)){
-            checkInput();
+            checkInput(servSocket);
         } if (FD_ISSET(servSocket, &read_fds)){
             // ToDo: get port # form recvfrom (2nd last element)
             // sendto with C++ strings
@@ -368,14 +375,14 @@ void portStuff(char* curPath, int port){
             // Getting time of message arrival
             std::string timePart = getTime();
             // Getting address and port of message sender
-            char senderIP[INET_ADDRSTRLEN]; 
+            char senderIP[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &(sa.sin_addr), senderIP, INET_ADDRSTRLEN);
             // Analyze input
             int response = analyzeRequest(buffer, std::string(curPath));
             std::string responseCode;
             if (response == 400){
                 responseCode = return400();
-                responseCode = rtrim(responseCode);    
+                responseCode = rtrim(responseCode);
                 responseCode += ";";
             }
             else if (response == 404){
@@ -387,20 +394,22 @@ void portStuff(char* curPath, int port){
                 std::vector<std::string> splitReq = splitString(buffer);
                 std::string readFileName = formatFilename(splitReq[1], curPath);
                 responseCode = return200();
-                responseCode = rtrim(responseCode);    
+                responseCode = rtrim(responseCode);
                 responseCode = responseCode + "; " + readFileName;
             }
             // Log Message
-            std::cout << timePart << ' ' << senderIP << ':' << 
-                    htons(sa.sin_port) << "; " << cstrBuffer << "; " << 
+            std::cout << timePart << ' ' << senderIP << ':' <<
+                    htons(sa.sin_port) << "; " << cstrBuffer << "; " <<
                     responseCode << std::endl;
-            generateResponse(response, port, senderIP);
-            i ++;
-            if (i == 20) break;
+            generateResponse(response, port, senderIP, servSocket, sa);
+            // i ++;
+            // if (i == 20) break;
             // getAddrAndPort()
             // std::cout << str << std::endl;
         }
+
     }
+    close(servSocket);
 }
 
 
