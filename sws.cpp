@@ -229,7 +229,6 @@ int analyzeRequest(char* buffer, std::string curPath){
     std::string readFileName = formatFilename(splitReq[1], curPath);
     // std::cout << "readFileName is " << readFileName << std::endl;
     if (!validPathString(readFileName)){
-        std::cout << "File is not valid! " << std::endl;
         return 404;
     } else { 
         return 200;
@@ -254,13 +253,18 @@ void generateResponse(int code, int port, std::string senderIP){
     /* The address is IPv4 */
     sa.sin_family = AF_INET;
      
-    /* IPv4 adresses is a uint32_t, convert a string representation of the octets to the appropriate value */
+    /* IPv4 adresses is a uint32_t, convert a string representation of the 
+    octets to the appropriate value */
     // sa.sin_addr.s_addr = inet_addr("10.10.1.100");
-    sa.sin_addr.s_addr = inet_addr(senderIP.c_str());
-      
-    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order, set the port to 7654 */
+    std::cout << "Sending to " << "10.0.2.15" << std::endl;
+    // sa.sin_addr.s_addr = inet_addr(senderIP.c_str());
+    sa.sin_addr.s_addr = inet_addr("10.0.2.15");
+    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order,
+     set the port to 7654 */
+    // std::cout << "Code is " << code << std::endl;
     sa.sin_port = htons(port);
     if (code == 404){
+        std::cout << "Sending 404 Not Found to sender" << std::endl;
         strcpy(buffer, "ERROR 404");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
@@ -269,6 +273,7 @@ void generateResponse(int code, int port, std::string senderIP){
             exit(EXIT_FAILURE);
         }
     } else if (code == 400){
+        std::cout << "Sending 400 Not Found to sender" << std::endl;
         strcpy(buffer, "ERROR 400");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
@@ -277,6 +282,7 @@ void generateResponse(int code, int port, std::string senderIP){
             exit(EXIT_FAILURE);        
         }
     } else {
+        std::cout << "Sending 200 OK to sender" << std::endl;
         strcpy(buffer, "200 OK");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
@@ -302,7 +308,12 @@ void portStuff(char* curPath, int port){
     int servSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
     // int enable = 1;
     int optval = 1;
-    setsockopt(servSocket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    int sockOpt = setsockopt(servSocket, SOL_SOCKET, SO_REUSEADDR, &optval,
+             sizeof optval);
+    if (sockOpt < 0)
+    {
+        perror("Error setting socket option");
+    }
 // error("setsockopt(SO_REUSEADDR) failed"));
     struct sockaddr_in sa;
     char buffer[1024];
@@ -316,7 +327,7 @@ void portStuff(char* curPath, int port){
     fromlen = sizeof(sa);
 
     if (-1 == bind(servSocket, (struct sockaddr *)&sa, sizeof sa)) {
-        perror("error bind failed");
+        perror("Error server socket bind failed");
         close(servSocket);
         exit(EXIT_FAILURE);
     }
@@ -326,6 +337,7 @@ void portStuff(char* curPath, int port){
     // GET / HTTP/1.0
     // Specified GET looks in the folder for the specified file
     // GET /icons/new.gif
+    int i = 0;
     for (;;) {
         // use select() for this part to look at both inputs
             // stdin keyboard and recvfrom buffer
@@ -361,20 +373,30 @@ void portStuff(char* curPath, int port){
             // Analyze input
             int response = analyzeRequest(buffer, std::string(curPath));
             std::string responseCode;
-            if (response == 400)
+            if (response == 400){
                 responseCode = return400();
-            else if (response == 404)
+                responseCode = rtrim(responseCode);    
+                responseCode += ";";
+            }
+            else if (response == 404){
                 responseCode = return404();
+                responseCode = rtrim(responseCode);
+                responseCode += ";";
+            }
             else {
                 std::vector<std::string> splitReq = splitString(buffer);
                 std::string readFileName = formatFilename(splitReq[1], curPath);
-                responseCode = return200() + readFileName;
+                responseCode = return200();
+                responseCode = rtrim(responseCode);    
+                responseCode = responseCode + "; " + readFileName;
             }
             // Log Message
             std::cout << timePart << ' ' << senderIP << ':' << 
                     htons(sa.sin_port) << "; " << cstrBuffer << "; " << 
-                    responseCode << ";" << std::endl;
-            // generateResponse(response, port, senderIP);
+                    responseCode << std::endl;
+            generateResponse(response, port, senderIP);
+            i ++;
+            if (i == 20) break;
             // getAddrAndPort()
             // std::cout << str << std::endl;
         }
