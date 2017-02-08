@@ -30,6 +30,7 @@ extern "C" {
 #include <locale>
 #include <iomanip>
 #include <fstream>
+#include <ios>
 
 
 bool numOnly(const char *s)
@@ -237,40 +238,53 @@ int analyzeRequest(char* buffer, std::string curPath){
 
 }
 
-void generateResponse(int code, int port, std::string senderIP, int senderSock,
-                      struct sockaddr_in sa){
-    // int senderSock;
-    // struct sockaddr_in sa;
+void sendFileContents(int senderSock, struct sockaddr_in sa, 
+                      std::string readFileName){
     int bytes_sent;
     char buffer[200];
-    // senderSock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    // if (-1 == senderSock) {
-    //     /* if socket failed to initialize, exit */
-    //     printf("Error creating socket for response");
-    //     exit(EXIT_FAILURE);
-    // }
-    /* Zero out socket address */
-    // memset(&sa, 0, sizeof sa);
+    // Sending the first message
+    std::string firstPart = "HTTP/1.0 200 OK\n";
+    strcpy(buffer, firstPart.c_str());
+    bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+            (struct sockaddr*)&sa, sizeof sa);
+    if (bytes_sent < 0) {
+        printf("Error sending packet: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    // Sending file contents
+    std::ifstream inFile(readFileName, std::ios::binary | std::ios::ate);
+    int fileLen = inFile.tellg();
+    if (fileLen < 200){
+        inFile.read(buffer, fileLen);
+        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+                (struct sockaddr*)&sa, sizeof sa);
+        if (bytes_sent < 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        for (int i = 0; i < fileLen; i += 200)
+        {
+            inFile.read(buffer, fileLen);
+            bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+                    (struct sockaddr*)&sa, sizeof sa);
+            if (bytes_sent < 0) {
+                printf("Error sending packet: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+}
 
-    /* The address is IPv4 */
-    // sa.sin_family = AF_INET;
-
-    /* IPv4 adresses is a uint32_t, convert a string representation of the
-    octets to the appropriate value */
-    // sa.sin_addr.s_addr = inet_addr("10.10.1.100");
-    // std::cout << "Sending to " << "10.0.2.15" << std::endl;
-    // senderIP = "10.10.1.1";
+void generateResponse(int code, int port, std::string senderIP, int senderSock,
+                      struct sockaddr_in sa, std::string readFileName){
+    int bytes_sent;
+    char buffer[200];
     std::cout << "Sender IP is " << senderIP << std::endl;
-    // sa.sin_addr.s_addr = inet_addr(senderIP.c_str());
-    // sa.sin_addr.s_addr = inet_addr("10.0.1.100");
-    /* sockets are unsigned shorts, htons(x) ensures x is in network byte order,
-    set the port to 7654 */
-    // std::cout << "Code is " << code << std::endl;
     std::cout << "Sender port is " << port << std::endl;
-    // sa.sin_port = htons(port);
     if (code == 404){
         std::cout << "Sending 404 Not Found to sender" << std::endl;
-        strcpy(buffer, "ERROR 404");
+        strcpy(buffer, "HTTP/1.0 404 Not Found\n");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
@@ -279,7 +293,7 @@ void generateResponse(int code, int port, std::string senderIP, int senderSock,
         }
     } else if (code == 400){
         std::cout << "Sending 400 Not Found to sender" << std::endl;
-        strcpy(buffer, "ERROR 400");
+        strcpy(buffer, "HTTP/1.0 400 Bad Request\n");
         bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
                 (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
@@ -287,17 +301,9 @@ void generateResponse(int code, int port, std::string senderIP, int senderSock,
             exit(EXIT_FAILURE);
         }
     } else {
-      std::cout << "Sending 200 OK to sender" << std::endl;
-        strcpy(buffer, "200 OK");
-        bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
-                (struct sockaddr*)&sa, sizeof sa);
-        if (bytes_sent < 0) {
-            printf("Error sending packet: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+        std::cout << "Sending 200 OK to sender" << std::endl;
+        sendFileContents(senderSock, sa, readFileName);  
     }
-
-    // close(senderSock);
 }
 
 // Method for trimming the last element of a string from
@@ -380,6 +386,7 @@ void portStuff(char* curPath, int port){
             // Analyze input
             int response = analyzeRequest(buffer, std::string(curPath));
             std::string responseCode;
+            std::string readFileName;
             if (response == 400){
                 responseCode = return400();
                 responseCode = rtrim(responseCode);
@@ -392,7 +399,7 @@ void portStuff(char* curPath, int port){
             }
             else {
                 std::vector<std::string> splitReq = splitString(buffer);
-                std::string readFileName = formatFilename(splitReq[1], curPath);
+                readFileName = formatFilename(splitReq[1], curPath);
                 responseCode = return200();
                 responseCode = rtrim(responseCode);
                 responseCode = responseCode + "; " + readFileName;
@@ -401,7 +408,8 @@ void portStuff(char* curPath, int port){
             std::cout << timePart << ' ' << senderIP << ':' <<
                     htons(sa.sin_port) << "; " << cstrBuffer << "; " <<
                     responseCode << std::endl;
-            generateResponse(response, port, senderIP, servSocket, sa);
+            generateResponse(response, port, senderIP, servSocket, sa, 
+                             readFileName);
             // i ++;
             // if (i == 20) break;
             // getAddrAndPort()
