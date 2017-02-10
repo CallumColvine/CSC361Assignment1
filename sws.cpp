@@ -238,55 +238,126 @@ int analyzeRequest(char* buffer, std::string curPath){
 
 }
 
-void sendFileContents(int senderSock, struct sockaddr_in sa,
-                      std::string readFileName){
-    int bytes_sent;
-    int bytes_read;
-    char buffer[200];
-    char *fileContents = new char [200];
-    // Sending the first message
+std::string getFilenameFromPath(std::string fullPath){
+    std::size_t lastSlash = fullPath.find_last_of("/\\");
+    return fullPath.substr(lastSlash + 1);
+}
+
+void sendFileContentsV2(int senderSock, struct sockaddr_in sa, 
+                        std::string readFileName){
     std::string firstPart = "HTTP/1.0 200 OK\n";
-    strcpy(buffer, firstPart.c_str());
-    bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
-            (struct sockaddr*)&sa, sizeof sa);
-    if (bytes_sent < 0) {
-        printf("Error sending packet: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-    // Sending file contents
+    int replyLen = firstPart.length();
+    // std::vector<std::string> messageVec;
+    // Get file length
     std::ifstream inFile(readFileName, std::ios::binary | std::ios::ate);
     int fileLen = inFile.tellg();
     inFile.close();
+    char fileContents[fileLen];
+    std::string justFilename = getFilenameFromPath(readFileName);
+    justFilename.append("\n");
+    char fullReply[replyLen + justFilename.length() + fileLen + 2];
+    // char fullMessage[fileLen];
+    // Read in the file
     FILE * inFileC = fopen(readFileName.c_str(), "r");
-    if (fileLen <= 200){
-        std::cout << "Sending message of len < 200" << std::endl;
-        // inFile.read(fileContents, fileLen);
-        bytes_read = fread(fileContents, sizeof(char), fileLen, inFileC);
-
-        std::cout << "Buffer is " << fileContents <<
+    int bytes_read = fread(fileContents, sizeof(char), fileLen, inFileC);
+    if (bytes_read == 0)
+        std::cout << "Input file is empty" << std::endl;
+    strcpy(fullReply, firstPart.c_str());
+    strcat(fullReply, justFilename.c_str());
+    strcat(fullReply, fileContents);
+    strcat(fullReply, "\n\0");
+    if (sizeof(fullReply) <= 200)
+    {
+        std::cout << "Message of length =< 200" << std::endl;
+        std::cout << "Reply is " << fullReply <<
                      "fileLen is " << fileLen << std::endl;
-        bytes_sent = sendto(senderSock, fileContents, strlen(fileContents), 0,
-                (struct sockaddr*)&sa, sizeof sa);
+        int bytes_sent = sendto(senderSock, fullReply, strlen(fullReply), 0,
+                                (struct sockaddr*)&sa, sizeof sa);
         if (bytes_sent < 0) {
             printf("Error sending packet: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     } else {
-        std::cout << "Sending message of len > 200" << std::endl;
-        for (int i = 0; i < fileLen; i += 200)
+        std::cout << "Message of length > 200" << std::endl;
+        for (uint i = 0; i < sizeof(fullReply); i += 200)
         {
+            int bytes_sent = sendto(senderSock, &fullReply[i], 200, 0, 
+                                   (struct sockaddr*)&sa, sizeof sa);
+            if (bytes_sent < 0) {
+                printf("Error sending packet: %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }        
+        }    
+    }
+    // Add the first entry to the array
+    // messageVec.push_back(firstPart);
+    // strcpy(messageVec[0], fileContents, int(200 - replyLen));
+    // if (! fileLen < replyLen)
+    // {
+    //     for (int i = replyLen; i < bytes_read; i += 200)
+    //     {
+            
+    //     }
+    // }
 
-            inFile.read(buffer, 200);
-            bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+}
+
+void sendFileContents(int senderSock, struct sockaddr_in sa,
+                      std::string readFileName){
+    int bytes_sent;
+    int bytes_read;
+    char buffer[200];
+    std::string firstPart = "HTTP/1.0 200 OK\n\n";
+    // ToDo: add filename to end
+    int replyLen = firstPart.length();
+    std::ifstream inFile(readFileName, std::ios::binary | std::ios::ate);
+    int fileLen = inFile.tellg();
+    char *fileContents = new char [fileLen];
+    strcpy(buffer, firstPart.c_str());
+    // Sending the first message
+    // bytes_sent = sendto(senderSock, buffer, strlen(buffer), 0,
+    //         (struct sockaddr*)&sa, sizeof sa);
+    // if (bytes_sent < 0) {
+    //     printf("Error sending packet: %s\n", strerror(errno));
+    //     exit(EXIT_FAILURE);
+    // }
+    // Sending file contents
+    inFile.close();
+    FILE * inFileC = fopen(readFileName.c_str(), "r");
+    // if (fileLen <= (200 - replyLen)){
+    // char fileRead[200 - replyLen];
+    std::cout << "Sending message of len < 200" << std::endl;
+    // inFile.read(fileContents, fileLen);
+    bytes_read = fread(fileContents, sizeof(char), fileLen, inFileC);
+    std::cout << bytes_read << std::endl;
+    strcat(buffer, fileContents);
+    std::cout << "Buffer is " << buffer <<
+                 "fileLen is " << fileLen << std::endl;
+    bytes_sent = sendto(senderSock, buffer, strlen(fileContents), 0,
+            (struct sockaddr*)&sa, sizeof sa);
+    if (bytes_sent < 0) {
+        printf("Error sending packet: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    } 
+    if (fileLen > (200 - replyLen)){
+        std::cout << "Sending message of len > 200" << std::endl;
+        for (int i = 0; i < fileLen; i += bytes_read)
+        {
+            char bufferLong[200];
+            bytes_read = fread(bufferLong, sizeof(char), 200, inFileC);
+            // inFile.read(buffer, 200);    
+            std::cout << "Buffer is " << bufferLong <<
+                         "fileLen is " << fileLen << std::endl;
+            bytes_sent = sendto(senderSock, bufferLong, strlen(buffer), 0,
                     (struct sockaddr*)&sa, sizeof sa);
             if (bytes_sent < 0) {
                 printf("Error sending packet: %s\n", strerror(errno));
                 exit(EXIT_FAILURE);
             }
+            buffer[0] = '\0';
         }
     }
     // fclose(inFile);
-
 }
 
 void generateResponse(int code, int port, std::string senderIP, int senderSock,
@@ -315,7 +386,7 @@ void generateResponse(int code, int port, std::string senderIP, int senderSock,
         }
     } else {
         std::cout << "Sending 200 OK to sender" << std::endl;
-        sendFileContents(senderSock, sa, readFileName);
+        sendFileContentsV2(senderSock, sa, readFileName);
     }
 }
 
