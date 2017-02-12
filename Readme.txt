@@ -1,9 +1,10 @@
 Callum Colvine
 V00789488
-B01
+B06
 
 NOTE: For testing, there must be a file cantRead with no permissions. This could
 not be zipped. It can be easily created and set-up with the command:
+$ touch www/cantRead
 $ chmod 000 www/cantRead
 
 sws.cpp is a server that takes in UDP requests and replies with the codes:
@@ -18,7 +19,7 @@ the server will make a large string containing the OK response and the contents
 of the file and send that in as few pieces as possible. The buffer size is
 hard-coded to 200 but could be easily changed/specified with a global variable.
 
-No bonuses were implemented. All basic functionality was completed. 
+No bonuses were implemented. All basic functionality was completed.
 
 To test, run:
 $ ./Testfile.sh
